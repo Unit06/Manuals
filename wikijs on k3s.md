@@ -1,0 +1,300 @@
+##Software
+VirtualBox 6<br>
+UbuntuServer 20.4<br>
+machine Properties<br>
+<br>
+##Install Kubernetes k3s
+Configure legacy IP tables
+````bash
+sudo iptables -F 
+sudo update-alternatives --set iptables /usr/sbin/iptables-legacy 
+sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 
+sudo reboot
+````
+K3s Install<br>
+Become root:
+````bash
+sudo su -
+````
+Install K3s (master setup)
+````bash
+curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" sh -s 
+````
+Install and configure Wiki.js on Kubernetes Cluster on your system with the aid of the below steps.
+
+Step 1 – Create the Wiki.js Namespace
+Normally, a namespace is used to partition a single Kubernetes cluster into many virtual clusters. Begin by creating the namespace for wiki.js as below.
+````bash
+kubectl create namespace wikijs
+````
+Verify the namespace exists.
+````bash
+$ kubectl get namespaces
+NAME              STATUS   AGE
+default           Active   98s
+kube-node-lease   Active   99s
+kube-public       Active   99s
+kube-system       Active   99s
+wikijs            Active   11s
+````
+Step 2 – Create the Secrets file<br>
+The secret file contains the username and passwords to be created for the below database. Now create a secret file as below.
+````bash
+nano wikijs-secret.yaml
+````
+Generate your own credentials for theROOT, ROOT_PASSWORD, DATABASE, USER variables.<br>
+See below examples
+````bash
+# MySQL root user
+$ echo -n 'root' | base64
+cm9vdA==
+
+# MySQL root user password
+$ echo -n 'StrongRootPassword' | base64
+U3Ryb25nUm9vdFBhc3N3b3Jk
+
+# Wiki.js MySQL database name
+$ echo -n 'wikijs' | base64
+d2lraWpz
+
+# Wiki.js MySQL user
+$ echo -n 'wikijs' | base64
+d2lraWpz
+
+# Wiki.js MySQL user Password
+$ echo -n 'StrongUserPassword' | base64
+U3Ryb25nVXNlclBhc3N3b3Jk
+````
+In the file, add the below lines replacing appropriately.
+````bash
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mariadb-secret
+  namespace: wikijs
+type: Opaque
+data:
+  ROOT: cm9vdA==
+  ROOT_PASSWORD: U3Ryb25nUm9vdFBhc3N3b3Jk
+  DATABASE: d2lraWpz
+  USER: d2lraWpz
+  PASSWORD: U3Ryb25nVXNlclBhc3N3b3Jk
+  ````
+Apply the made changes.
+````bash
+kubectl apply -f wikijs-secret.yaml
+````
+Verify if your change is made.
+````bash
+$ kubectl get secret -n wikijs
+NAME                  TYPE                                  DATA   AGE
+default-token-pb9fx   kubernetes.io/service-account-token   3      7m9s
+mariadb-secret        Opaque                                5      6s
+````
+Step 3 – Create the Database Pod for wiki.js<br>
+This config file contains the database details for wiki.js. In this guide, we will use the MariaDB database which can be configured as below.
+
+You will require to create a storage volume for MariaDB
+````bash
+sudo mkdir /var/wikijs
+````
+Create the wikijs-config.yaml file as below.
+````bash
+nano wikijs-config.yaml 
+````
+In the file, add the below lines. Here do not alter anything.
+
+````bash
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: wikijs
+spec:
+  selector:
+    app: mariadb
+  ports:
+  - name: mariadb
+    protocol: TCP
+    port: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  namespace: wikijs
+  labels:
+    app: mariadb
+spec:
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:10.6
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: PASSWORD
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mariadb-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mariadb-storage
+        hostPath:
+          path: /var/wikijs
+          type: Directory
+````
+Remember under DB_TYPE, you can set the type of database you want to use i.e. Postgres, MySQL, MariaDB, MsSQL, SQLite e.t.c
+
+Apply the settings made.
+````bash
+kubectl apply -f wikijs-config.yaml
+````
+Verify if the MariaDB pod has been created.
+````bash
+$ kubectl get pod -n wikijs
+NAME                      READY   STATUS    RESTARTS   AGE
+mariadb-6f9ddfd55c-55rzq   1/1     Running            0             15s
+````
+Step 4 – Deploy the Wiki.js Service and application<br>
+Here, we can deploy the service as a NodePort, ClusterIP, or load balancer. First, create the file
+````bash
+nano wikijs-service.yaml
+````
+For Nodeport add the below lines.
+````bash
+apiVersion: v1
+kind: Service
+metadata:
+  name: "wikijs"
+  namespace: wikijs
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 3000
+  selector:
+    app: "wikijs"
+````
+For this guide, we will deploy the service as NodePort for the cluster to be accessed from outside.
+````bash
+kubectl apply -f wikijs-service.yaml
+````
+Verify this.
+````bash
+$ kubectl get svc -n wikijs
+NAME     TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+mariadb   ClusterIP   10.96.123.37     <none>        3306/TCP         29s
+wikijs   NodePort   10.100.116.117   <none>        3000:31694/TCP   5s
+````
+Now proceed to the wiki.js deployment.
+````bash
+vim wikijs-deployment.yaml
+````
+In the file, add the below lines, here don’t replace anything, we are simply mapping the above configs.
+````bash
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikijs
+  namespace: wikijs
+  labels:
+    app: wikijs
+spec:
+  selector:
+    matchLabels:
+      app: wikijs
+  template:
+    metadata:
+      labels:
+        app: wikijs
+    spec:
+      containers:
+      - name: wikijs
+        image: requarks/wiki:beta
+        imagePullPolicy: Always
+        env:
+        - name: DB_TYPE
+          value: "mariadb"
+        - name: DB_HOST
+          value: "mariadb"
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: DATABASE
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: USER
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: PASSWORD
+        ports:
+        - containerPort: 3000
+          name: http
+````
+We have mapped the ConfigMap and secret variables to the deployment and also pulled the official wiki.js docker image.
+
+Now apply the made changes.
+````bash
+kubectl apply -f wikijs-deployment.yaml
+````
+Get the deployment.
+````bash
+$ kubectl get deploy -n wikijs
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+mariadb   1/1     1            1           115s
+wikijs    1/1     1            1           14m
+````
+Get the wiki.js pod.
+````bash
+$ kubectl get pods -n wikijs
+NAME                       READY   STATUS    RESTARTS     AGE
+mariadb-6f9ddfd55c-55rzq   1/1     Running   0            2m39s
+wikijs-548dcdd86c-tzp4f    1/1     Running   1 (5s ago)   93s
+````
+As seen we have two pods running successfully. One for the database and the other for the wiki.js service
+
+Obtain the port to which the NodePort service has been exposed.
+````bash
+$ kubectl get svc -n wikijs
+mariadb   ClusterIP   10.96.123.37     <none>        3306/TCP         67s
+wikijs    NodePort    10.104.156.51    <none>        3000:31694/TCP   22s
+````
+
+Step 5 – Access the wiki.js Web UI.<br>
+At this point, we can access the wiki.js service from the browser with the URL http://IP_Address:port(wikijs nodeport).<br>
+For example: http://SERVER_IP:31694 <br>
+Remember to replace the port with your own NodePort.
