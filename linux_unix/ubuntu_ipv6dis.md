@@ -1,4 +1,4 @@
-1. Disable IPv6 using Sysctl
+##Disable IPv6 using Sysctl
 ````bash
 sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
 sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
@@ -31,7 +31,7 @@ Now use chmod command to make the file executable:
 ````bash
 sudo chmod 755 /etc/rc.local
 ````
-2. Disable IPv6 using Sysctl
+##Disable IPv6 using Sysctl
 
 An alternative method is to configure GRUB to pass kernel parameters at boot time. You’ll have to edit /etc/default/grub. Once again, make sure you have administrator privileges.
 Now you need to modify GRUB_CMDLINE_LINUX_DEFAULT and GRUB_CMDLINE_LINUX to disable IPv6 on boot:
