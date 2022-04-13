@@ -26,3 +26,10 @@ Or a .cer file can be converted to a .crt file:
 ````bash
 openssl x509 -inform DER -in foo.cer -out foo.crt
 ````
+
+
+for CentOS 7:<br>
+path to add cert - /etc/pki/ca-trust/source/anchors/
+````bash
+update-ca-trust
+````
