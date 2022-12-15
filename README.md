@@ -8,4 +8,4 @@ Here will be a collection of different instructions that I have written myself o
    * [Install root *.crt file in Ubuntu server](linux_unix/crt.md)
    * [Disable IPv6 in Ubuntu server](linux_unix/ubuntu_ipv6dis.md)
 3. Windows manuals
-   * [How activate Windows 10 - 11 after install](Windows/Win10-11 activation.md)
+   * [How activate Windows 10 - 11 after install](Windows/Win10-11%20activation.md)
